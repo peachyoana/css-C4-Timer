@@ -1,4 +1,4 @@
-﻿using CounterStrikeSharp.API;
+using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Modules.Memory;
 using CounterStrikeSharp.API.Modules.Timers;
@@ -6,6 +6,10 @@ using CounterStrikeSharp.API.Modules.Utils;
 using Microsoft.Extensions.Logging;
 using System.Text.Json.Serialization;
 using Timer = CounterStrikeSharp.API.Modules.Timers.Timer;
+using System.Collections.Generic;
+using System;
+using System.Linq;
+
 
 namespace C4Timer;
 
@@ -58,54 +62,16 @@ public class C4Timer : BasePlugin, IPluginConfig<C4TimerConfig>
 
     private Timer? CountdownToExplosion;
 
-    private Dictionary<int, HudElementComponent> playerTimerHud = new();
-
     public required C4TimerConfig Config { get; set; }
-
-    // new methods ==================================================================
-    private HookResult OnRoundPrestart(EventRoundPrestart @event, GameEventInfo info)
-    {
-        PlantedC4 = false;
-        RemoveAllTimerHud();
-        return HookResult.Continue;
-    }
-    
-    private HookResult OnBombExploded(EventBombExploded @event, GameEventInfo info)
-    {
-        PlantedC4 = false;
-        RemoveAllTimerHud();
-        return HookResult.Continue;
-    }
-    
-    private HookResult OnBombDefused(EventBombDefused @event, GameEventInfo info)
-    {
-        PlantedC4 = false;
-        RemoveAllTimerHud();
-        return HookResult.Continue;
-    }
-    
-    private void RemoveAllTimerHud()
-    {
-        foreach (var player in GetPlayers())
-        {
-            if (playerTimerHud.TryGetValue(player.Id, out var hud))
-            {
-                player.Hud?.RemoveHudElement(hud);
-            }
-        }
-        playerTimerHud.Clear();
-    }
-    // ==========================================================================
 
     public void OnConfigParsed(C4TimerConfig config) { Config = config; }
 
     public override void Load(bool hotReload)
     {
         RegisterEventHandler<EventBombPlanted>(BombPlantedPost); //bPlantedC4 = true
-        // changed
-        RegisterEventHandler<EventRoundPrestart>(OnRoundPrestart);
-        RegisterEventHandler<EventBombExploded>(OnBombExploded);
-        RegisterEventHandler<EventBombDefused>(OnBombDefused);
+        RegisterEventHandler<EventRoundPrestart>((_, _) => { PlantedC4 = false; return HookResult.Continue; });
+        RegisterEventHandler<EventBombExploded>((_, _) => { PlantedC4 = false; return HookResult.Continue; });
+        RegisterEventHandler<EventBombDefused>((_, _) => { PlantedC4 = false; return HookResult.Continue; });
 
         if (Config.EnableColorMessage)
         {
@@ -136,35 +102,17 @@ public class C4Timer : BasePlugin, IPluginConfig<C4TimerConfig>
 
         return HookResult.Continue;
     }
-    // NEW ================================
+
     public void OnTick()
     {
-    if (string.IsNullOrEmpty(messageCountdown))
-        return;
+        if (string.IsNullOrEmpty(messageCountdown))
+            return;
 
-    foreach (var player in GetPlayers())
-    {
-        if (!playerTimerHud.ContainsKey(player.Id))
+        foreach (var Player in GetPlayers())
         {
-            // Create new HUD element for player
-            var hud = new HudElementComponent()
-            {
-                Text = messageCountdown,
-                PositionX = 0.5f,    // center horizontally
-                PositionY = 0.15f,   // 15% down from top — higher on screen
-                Channel = 4          // separate channel so no conflicts
-            };
-            player.Hud?.AddHudElement(hud);
-            playerTimerHud[player.Id] = hud;
-        }
-        else
-        {
-            // Update existing HUD element
-            playerTimerHud[player.Id].Text = messageCountdown;
+            Player.PrintToCenterHtml(messageCountdown);
         }
     }
-}
-// ===========================
 
     public void CountdownToExplosionC4()
     {
@@ -189,8 +137,9 @@ public class C4Timer : BasePlugin, IPluginConfig<C4TimerConfig>
         }
         else messageCountdown = GenerateCountdownMessage();
 
+        // -1 so that it shows on a different channel and does not overlap with other UI features such as Zenith Bans or Weapon Paints
         if (!Config.EnableColorMessage)
-            VirtualFunctions.ClientPrintAll(HudDestination.Center, messageCountdown, 0, 0, 0, 0);
+            VirtualFunctions.ClientPrintAll(HudDestination.Center - 1, messageCountdown, 0, 0, 0, 0);
     }
 
     private string GenerateCountdownMessage()
