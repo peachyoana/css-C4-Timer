@@ -58,16 +58,54 @@ public class C4Timer : BasePlugin, IPluginConfig<C4TimerConfig>
 
     private Timer? CountdownToExplosion;
 
+    private Dictionary<int, HudElementComponent> playerTimerHud = new();
+
     public required C4TimerConfig Config { get; set; }
+
+    // new methods ==================================================================
+    private HookResult OnRoundPrestart(EventRoundPrestart @event, GameEventInfo info)
+    {
+        PlantedC4 = false;
+        RemoveAllTimerHud();
+        return HookResult.Continue;
+    }
+    
+    private HookResult OnBombExploded(EventBombExploded @event, GameEventInfo info)
+    {
+        PlantedC4 = false;
+        RemoveAllTimerHud();
+        return HookResult.Continue;
+    }
+    
+    private HookResult OnBombDefused(EventBombDefused @event, GameEventInfo info)
+    {
+        PlantedC4 = false;
+        RemoveAllTimerHud();
+        return HookResult.Continue;
+    }
+    
+    private void RemoveAllTimerHud()
+    {
+        foreach (var player in GetPlayers())
+        {
+            if (playerTimerHud.TryGetValue(player.Id, out var hud))
+            {
+                player.Hud?.RemoveHudElement(hud);
+            }
+        }
+        playerTimerHud.Clear();
+    }
+    // ==========================================================================
 
     public void OnConfigParsed(C4TimerConfig config) { Config = config; }
 
     public override void Load(bool hotReload)
     {
         RegisterEventHandler<EventBombPlanted>(BombPlantedPost); //bPlantedC4 = true
-        RegisterEventHandler<EventRoundPrestart>((_, _) => { PlantedC4 = false; return HookResult.Continue; });
-        RegisterEventHandler<EventBombExploded>((_, _) => { PlantedC4 = false; return HookResult.Continue; });
-        RegisterEventHandler<EventBombDefused>((_, _) => { PlantedC4 = false; return HookResult.Continue; });
+        // changed
+        RegisterEventHandler<EventRoundPrestart>(OnRoundPrestart);
+        RegisterEventHandler<EventBombExploded>(OnBombExploded);
+        RegisterEventHandler<EventBombDefused>(OnBombDefused);
 
         if (Config.EnableColorMessage)
         {
@@ -98,17 +136,35 @@ public class C4Timer : BasePlugin, IPluginConfig<C4TimerConfig>
 
         return HookResult.Continue;
     }
-
+    // NEW ================================
     public void OnTick()
     {
-        if (string.IsNullOrEmpty(messageCountdown))
-            return;
+    if (string.IsNullOrEmpty(messageCountdown))
+        return;
 
-        foreach (var Player in GetPlayers())
+    foreach (var player in GetPlayers())
+    {
+        if (!playerTimerHud.ContainsKey(player.Id))
         {
-            Player.PrintToCenterHtml(messageCountdown);
+            // Create new HUD element for player
+            var hud = new HudElementComponent()
+            {
+                Text = messageCountdown,
+                PositionX = 0.5f,    // center horizontally
+                PositionY = 0.15f,   // 15% down from top — higher on screen
+                Channel = 4          // separate channel so no conflicts
+            };
+            player.Hud?.AddHudElement(hud);
+            playerTimerHud[player.Id] = hud;
+        }
+        else
+        {
+            // Update existing HUD element
+            playerTimerHud[player.Id].Text = messageCountdown;
         }
     }
+}
+// ===========================
 
     public void CountdownToExplosionC4()
     {
