@@ -6,10 +6,6 @@ using CounterStrikeSharp.API.Modules.Utils;
 using Microsoft.Extensions.Logging;
 using System.Text.Json.Serialization;
 using Timer = CounterStrikeSharp.API.Modules.Timers.Timer;
-using System.Collections.Generic;
-using System;
-using System.Linq;
-
 
 namespace C4Timer;
 
@@ -68,7 +64,7 @@ public class C4Timer : BasePlugin, IPluginConfig<C4TimerConfig>
 
     public override void Load(bool hotReload)
     {
-        RegisterEventHandler<EventBombPlanted>(BombPlantedPost); //bPlantedC4 = true
+        RegisterEventHandler<EventBombPlanted>(BombPlantedPost);
         RegisterEventHandler<EventRoundPrestart>((_, _) => { PlantedC4 = false; return HookResult.Continue; });
         RegisterEventHandler<EventBombExploded>((_, _) => { PlantedC4 = false; return HookResult.Continue; });
         RegisterEventHandler<EventBombDefused>((_, _) => { PlantedC4 = false; return HookResult.Continue; });
@@ -77,6 +73,9 @@ public class C4Timer : BasePlugin, IPluginConfig<C4TimerConfig>
         {
             RegisterListener<Listeners.OnTick>(OnTick);
         }
+
+        // Register chat handler to block commands starting with "!"
+        RegisterListener<Listeners.OnPlayerChat>(OnPlayerChat);
 
         ColorMsg(Config.TimeColor, TimeColor);
         ColorMsg(Config.ProgressBarColor, ProgressBarColor);
@@ -137,9 +136,8 @@ public class C4Timer : BasePlugin, IPluginConfig<C4TimerConfig>
         }
         else messageCountdown = GenerateCountdownMessage();
 
-        // -1 so that it shows on a different channel and does not overlap with other UI features such as Zenith Bans or Weapon Paints
         if (!Config.EnableColorMessage)
-            VirtualFunctions.ClientPrintAll(HudDestination.Center - 1, messageCountdown, 0, 0, 0, 0);
+            VirtualFunctions.ClientPrintAll(HudDestination.Center, messageCountdown, 0, 0, 0, 0);
     }
 
     private string GenerateCountdownMessage()
@@ -240,5 +238,17 @@ public class C4Timer : BasePlugin, IPluginConfig<C4TimerConfig>
     {
         return Utilities.GetPlayers().Where(player =>
             player != null && player.IsValid && player.Connected == PlayerConnectedState.PlayerConnected).ToList();
+    }
+
+    // NEW: Chat handler to block commands starting with "!" during bomb timer
+    public HookResult OnPlayerChat(PlayerChatEvent e)
+    {
+        if (PlantedC4 && !string.IsNullOrEmpty(e.Message) && e.Message.StartsWith("!"))
+        {
+            e.Player.SendMessage("You cannot use commands during the bomb timer!");
+            return HookResult.Cancel; // blocks the command
+        }
+
+        return HookResult.Continue;
     }
 }
